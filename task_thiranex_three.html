@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Task Manager | State & DOM Architecture</title>
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --danger: #ef4444;
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      display: flex;
+      justify-content: center;
+      padding: 2rem 1rem;
+    }
+
+    .app-container {
+      width: 100%;
+      max-width: 550px;
+      background: var(--surface);
+      border-radius: var(--radius);
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+      padding: 1.5rem;
+      border: 1px solid var(--border);
+    }
+
+    header h1 {
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
+    }
+
+    /* Form Layout */
+    .task-form {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .task-input {
+      flex: 1;
+      padding: 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      outline: none;
+      font-size: 0.95rem;
+    }
+
+    .task-input:focus {
+      border-color: var(--primary);
+    }
+
+    .btn {
+      padding: 0.75rem 1rem;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: var(--radius);
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .btn:hover { background: var(--primary-hover); }
+
+    /* Controls Header */
+    .controls-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 1rem;
+    }
+
+    .filter-group {
+      display: flex;
+      gap: 0.25rem;
+    }
+
+    .filter-btn {
+      background: none;
+      border: none;
+      padding: 0.25rem 0.5rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 0.875rem;
+    }
+
+    .filter-btn.active {
+      background: var(--bg);
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    .stats {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    /* Task List */
+    .task-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .task-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem;
+      background: var(--bg);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+    }
+
+    .task-main {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex: 1;
+    }
+
+    .task-checkbox {
+      width: 1.1rem;
+      height: 1.1rem;
+      cursor: pointer;
+    }
+
+    .task-title {
+      font-size: 0.95rem;
+      word-break: break-all;
+    }
+
+    .task-item.completed .task-title {
+      text-decoration: line-through;
+      color: var(--text-muted);
+    }
+
+    .task-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .btn-action {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 0.85rem;
+      padding: 0.25rem;
+      color: var(--text-muted);
+    }
+
+    .btn-action.delete:hover { color: var(--danger); }
+    .btn-action.edit:hover { color: var(--primary); }
+
+    /* Inline Edit Inputs */
+    .edit-input {
+      width: 100%;
+      padding: 0.25rem 0.5rem;
+      font-size: 0.95rem;
+      border: 1px solid var(--primary);
+      border-radius: 4px;
+    }
+
+    .empty-state {
+      text-align: center;
+      color: var(--text-muted);
+      padding: 2rem 0;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+    <header>
+      <h1>Task Manager</h1>
+    </header>
+
+    <form class="task-form" id="task-form">
+      <input type="text" id="task-input" class="task-input" placeholder="Add a new task..." required />
+      <button type="submit" class="btn">Add Task</button>
+    </form>
+
+    <div class="controls-bar">
+      <div class="filter-group" id="filter-group">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="active">Active</button>
+        <button class="filter-btn" data-filter="completed">Completed</button>
+      </div>
+      <span class="stats" id="task-stats">0 items left</span>
+    </div>
+
+    <ul class="task-list" id="task-list"></ul>
+  </div>
+
+  <script>
+    /**
+     * STATE MANAGEMENT & LOCAL STORAGE ARCHITECTURE
+     */
+    const STORAGE_KEY = 'app_tasks_state';
+
+    // Application state object
+    let state = {
+      tasks: JSON.parse(localStorage.getItem(STORAGE_KEY)) || [],
+      filter: 'all' // 'all' | 'active' | 'completed'
+    };
+
+    // DOM Elements
+    const taskForm = document.getElementById('task-form');
+    const taskInput = document.getElementById('task-input');
+    const taskList = document.getElementById('task-list');
+    const filterGroup = document.getElementById('filter-group');
+    const taskStats = document.getElementById('task-stats');
+
+    // Save state to localStorage and re-render UI
+    function saveStateAndRender() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.tasks));
+      render();
+    }
+
+    /**
+     * CRUD & STATE OPERATIONS
+     */
+    function addTask(title) {
+      const newTask = {
+        id: Date.now().toString(),
+        title: title.trim(),
+        completed: false
+      };
+      state.tasks.push(newTask);
+      saveStateAndRender();
+    }
+
+    function toggleTask(id) {
+      state.tasks = state.tasks.map(task => 
+        task.id === id ? { ...task, completed: !task.completed } : task
+      );
+      saveStateAndRender();
+    }
+
+    function deleteTask(id) {
+      state.tasks = state.tasks.filter(task => task.id !== id);
+      saveStateAndRender();
+    }
+
+    function updateTaskTitle(id, newTitle) {
+      const trimmedTitle = newTitle.trim();
+      if (!trimmedTitle) {
+        deleteTask(id);
+        return;
+      }
+      state.tasks = state.tasks.map(task => 
+        task.id === id ? { ...task, title: trimmedTitle } : task
+      );
+      saveStateAndRender();
+    }
+
+    /**
+     * RENDERING ENGINE
+     */
+    function getFilteredTasks() {
+      if (state.filter === 'active') return state.tasks.filter(t => !t.completed);
+      if (state.filter === 'completed') return state.tasks.filter(t => t.completed);
+      return state.tasks;
+    }
+
+    function render() {
+      const filteredTasks = getFilteredTasks();
+      
+      // Update task list content
+      if (filteredTasks.length === 0) {
+        taskList.innerHTML = `<li class="empty-state">No tasks to display</li>`;
+      } else {
+        taskList.innerHTML = filteredTasks.map(task => `
+          <li class="task-item ${task.completed ? 'completed' : ''}" data-id="${task.id}">
+            <div class="task-main">
+              <input type="checkbox" class="task-checkbox" ${task.completed ? 'checked' : ''} />
+              <span class="task-title">${escapeHTML(task.title)}</span>
+            </div>
+            <div class="task-actions">
+              <button class="btn-action edit" aria-label="Edit Task">✏️</button>
+              <button class="btn-action delete" aria-label="Delete Task">🗑️</button>
+            </div>
+          </li>
+        `).join('');
+      }
+
+      // Update counters
+      const activeCount = state.tasks.filter(t => !t.completed).length;
+      taskStats.textContent = `${activeCount} ${activeCount === 1 ? 'task' : 'tasks'} left`;
+
+      // Update active state on filter buttons
+      Array.from(filterGroup.children).forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.filter === state.filter);
+      });
+    }
+
+    function escapeHTML(str) {
+      return str.replace(/[&<>'"]/g, 
+        tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+      );
+    }
+
+    /**
+     * EVENT HANDLERS & DELEGATION
+     */
+
+    // Handle Form Submit (Create)
+    taskForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const title = taskInput.value.trim();
+      if (title) {
+        addTask(title);
+        taskInput.value = '';
+      }
+    });
+
+    // Delegated Event Listener for List Controls (Update & Delete)
+    taskList.addEventListener('click', (e) => {
+      const taskItem = e.target.closest('.task-item');
+      if (!taskItem) return;
+      const taskId = taskItem.dataset.id;
+
+      // Handle Checkbox Toggle
+      if (e.target.classList.contains('task-checkbox')) {
+        toggleTask(taskId);
+      }
+
+      // Handle Delete Button
+      if (e.target.classList.contains('delete')) {
+        deleteTask(taskId);
+      }
+
+      // Handle Inline Edit Mode
+      if (e.target.classList.contains('edit')) {
+        enableEditMode(taskItem, taskId);
+      }
+    });
+
+    // Inline Editing Logic
+    function enableEditMode(taskItem, taskId) {
+      const taskObj = state.tasks.find(t => t.id === taskId);
+      const titleSpan = taskItem.querySelector('.task-title');
+      
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'edit-input';
+      input.value = taskObj.title;
+
+      titleSpan.replaceWith(input);
+      input.focus();
+
+      const commitEdit = () => {
+        updateTaskTitle(taskId, input.value);
+      };
+
+      input.addEventListener('blur', commitEdit);
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') input.blur();
+        if (e.key === 'Escape') render(); // Cancel editing
+      });
+    }
+
+    // Filter Switcher
+    filterGroup.addEventListener('click', (e) => {
+      if (e.target.classList.contains('filter-btn')) {
+        state.filter = e.target.dataset.filter;
+        render();
+      }
+    });
+
+    // Initial Application Setup
+    render();
+  </script>
+</body>
+</html>
