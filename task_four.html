@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Real-Time Weather Dashboard</title>
+  <style>
+    :root {
+      --bg-color: #0f172a;
+      --card-bg: #1e293b;
+      --text-main: #f8fafc;
+      --text-sub: #94a3b8;
+      --accent: #38bdf8;
+      --error-bg: #7f1d1d;
+      --error-text: #fecaca;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+    body { background-color: var(--bg-color); color: var(--text-main); display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 1rem; }
+    
+    .dashboard { background: var(--card-bg); width: 100%; max-width: 450px; border-radius: 16px; padding: 2rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+    h1 { font-size: 1.5rem; margin-bottom: 1.5rem; text-align: center; color: var(--accent); }
+
+    .search-box { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; }
+    input { flex: 1; padding: 0.75rem 1rem; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; font-size: 1rem; outline: none; }
+    input:focus { border-color: var(--accent); }
+    button { padding: 0.75rem 1.25rem; border: none; border-radius: 8px; background: var(--accent); color: #0f172a; font-weight: bold; cursor: pointer; transition: opacity 0.2s; }
+    button:hover { opacity: 0.9; }
+
+    .error-banner { background: var(--error-bg); color: var(--error-text); padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem; font-size: 0.9rem; display: none; }
+    .loading { text-align: center; color: var(--text-sub); display: none; margin: 1.5rem 0; }
+
+    .weather-info { display: none; flex-direction: column; gap: 1rem; }
+    .city-name { font-size: 1.4rem; font-weight: 600; }
+    .weather-desc { color: var(--text-sub); text-transform: capitalize; margin-top: -0.5rem; }
+    .temp-display { font-size: 3rem; font-weight: 700; margin: 0.5rem 0; }
+
+    .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; border-top: 1px solid #334155; padding-top: 1rem; }
+    .metric-card { background: #0f172a; padding: 1rem; border-radius: 8px; }
+    .metric-card span { display: block; font-size: 0.8rem; color: var(--text-sub); }
+    .metric-card strong { font-size: 1.1rem; }
+  </style>
+</head>
+<body>
+
+<div class="dashboard">
+  <h1>Weather Dashboard</h1>
+  
+  <form class="search-box" id="search-form">
+    <input type="text" id="city-input" placeholder="Enter city name..." required />
+    <button type="submit">Search</button>
+  </form>
+
+  <div class="error-banner" id="error-message"></div>
+  <div class="loading" id="loading-spinner">Fetching live weather data...</div>
+
+  <div class="weather-info" id="weather-display">
+    <div>
+      <div class="city-name" id="city-title">--</div>
+      <div class="weather-desc" id="weather-desc">--</div>
+    </div>
+    <div class="temp-display" id="temp-val">--°C</div>
+    
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <span>Humidity</span>
+        <strong id="humidity-val">--%</strong>
+      </div>
+      <div class="metric-card">
+        <span>Wind Speed</span>
+        <strong id="wind-val">-- m/s</strong>
+      </div>
+      <div class="metric-card">
+        <span>Pressure</span>
+        <strong id="pressure-val">-- hPa</strong>
+      </div>
+      <div class="metric-card">
+        <span>Feels Like</span>
+        <strong id="feels-val">--°C</strong>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // OpenWeatherMap Configuration
+  const API_KEY = "YOUR_OPENWEATHERMAP_API_KEY"; // Replace with your actual API key
+  const BASE_URL = "https://api.openweathermap.org/data/2.5/weather";
+
+  // DOM Elements
+  const form = document.getElementById('search-form');
+  const cityInput = document.getElementById('city-input');
+  const errorBox = document.getElementById('error-message');
+  const loader = document.getElementById('loading-spinner');
+  const weatherDisplay = document.getElementById('weather-display');
+
+  // Event Listener
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const city = cityInput.value.trim();
+    if (city) fetchWeatherData(city);
+  });
+
+  /**
+   * Asynchronously fetches weather data from REST API
+   * @param {string} city - Target city name
+   */
+  async function fetchWeatherData(city) {
+    clearUI();
+    showLoading(true);
+
+    try {
+      const endpoint = `${BASE_URL}?q=${encodeURIComponent(city)}&appid=${API_KEY}&units=metric`;
+      
+      // Perform HTTP GET Request using Fetch API
+      const response = await fetch(endpoint);
+
+      // Handle non-200 HTTP statuses
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error(`City "${city}" not found. Please check spelling.`);
+        } else if (response.status === 401) {
+          throw new Error('Invalid API key configured.');
+        } else {
+          throw new Error(`Server returned status code ${response.status}`);
+        }
+      }
+
+      // Parse JSON response body
+      const data = await response.json();
+
+      // Render extracted data
+      renderWeather(data);
+
+    } catch (err) {
+      // Handle network errors or thrown HTTP exceptions
+      showError(err.message || 'Network error: Failed to connect to server.');
+    } finally {
+      showLoading(false);
+    }
+  }
+
+  /**
+   * Extracts and renders complex nested JSON data to DOM
+   * @param {Object} data - Parsed REST API Response
+   */
+  function renderWeather(data) {
+    // Destructuring nested properties safely from API Response structure
+    const { name, sys: { country } = {} } = data;
+    const { temp, humidity, pressure, feels_like } = data.main || {};
+    const { speed } = data.wind || {};
+    const [primaryWeather] = data.weather || [];
+
+    document.getElementById('city-title').textContent = `${name}, ${country || ''}`;
+    document.getElementById('weather-desc').textContent = primaryWeather?.description || '';
+    document.getElementById('temp-val').textContent = `${Math.round(temp)}°C`;
+    document.getElementById('humidity-val').textContent = `${humidity}%`;
+    document.getElementById('wind-val').textContent = `${speed} m/s`;
+    document.getElementById('pressure-val').textContent = `${pressure} hPa`;
+    document.getElementById('feels-val').textContent = `${Math.round(feels_like)}°C`;
+
+    weatherDisplay.style.display = 'flex';
+  }
+
+  function showError(msg) {
+    errorBox.textContent = msg;
+    errorBox.style.display = 'block';
+  }
+
+  function showLoading(isLoading) {
+    loader.style.display = isLoading ? 'block' : 'none';
+  }
+
+  function clearUI() {
+    errorBox.style.display = 'none';
+    weatherDisplay.style.display = 'none';
+  }
+</script>
+</body>
+</html>
